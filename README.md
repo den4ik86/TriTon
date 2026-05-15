@@ -127,6 +127,17 @@ log_action()_________________Логирование для обучения
 /tmp/weights.conf	________________  Веса каскадов (обучение через подкрепление)  
 /tmp/station_dump.txt ____________	Кэш вывода iw station dump  
 /tmp/scan_cache.txt ______________	Кэш сканирования эфира  
+  
+Конфигурация  
+Все настройки в начале скрипта:  
 
+INTERFACE="phy0-ap0"        # Wi-Fi интерфейс
+MIN_POWER=5                 # Минимальная мощность
+MAX_POWER=20                # Максимальная мощность
+THRESHOLD_RETRY=15          # Порог retry для оценки "плохо"
+THRESHOLD_THROUGHPUT=20     # Порог throughput для оценки "плохо"
+THRESHOLD_RSSI=-75          # Порог RSSI для оценки "плохо"
+IDLE_INTERVAL=10            # Частота проверки (сек)
+SETTLE_TIME=30              # Время стабилизации после изменений
 
 
