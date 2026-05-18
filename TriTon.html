@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TriTon — Тернарная нейросеть для WiFi (симулятор)</title>
+    <style>
+        * { user-select: none; }
+        body {
+            background: #1a1a2e;
+            font-family: 'Segoe UI', 'Roboto', monospace;
+            margin: 0;
+            padding: 20px;
+            color: #eee;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 20px;
+        }
+        .canvas-panel {
+            background: #0f0f1a;
+            border-radius: 20px;
+            padding: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        canvas {
+            background: #2a2a3a;
+            border-radius: 12px;
+            display: block;
+            margin: 0 auto;
+            cursor: crosshair;
+            box-shadow: 0 0 0 2px #3a3a4a;
+        }
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        button {
+            background: #2d2d44;
+            border: none;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+            font-size: 13px;
+            font-family: monospace;
+        }
+        button.primary { background: #3a6ea5; }
+        button.warning { background: #a54a3a; }
+        button.success { background: #2c6e2e; }
+        button.info { background: #2a6f8f; }
+        button:hover { filter: brightness(1.1); transform: scale(1.02); }
+        .controls {
+            background: #1e1e2e;
+            border-radius: 20px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            background: #25253a;
+            border-radius: 18px;
+            padding: 12px;
+        }
+        .log-box {
+            background: #0b0b12;
+            border-radius: 14px;
+            padding: 10px;
+            height: 180px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 10px;
+            scroll-behavior: smooth;
+        }
+        .log-line {
+            border-left: 3px solid #4a6fa5;
+            padding-left: 8px;
+            margin: 3px 0;
+            color: #ccc;
+            font-size: 9px;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow-x: hidden;
+            text-overflow: ellipsis;
+        }
+        .log-line-emergency { border-left-color: #ff7777; color: #ffaaaa; }
+        .log-line-channel { border-left-color: #7bc87b; color: #aaffaa; }
+        .ap-item, .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #2a2a3f;
+            margin: 6px 0;
+            padding: 6px 12px;
+            border-radius: 40px;
+            font-size: 11px;
+        }
+        .power-bar {
+            width: 60px;
+            height: 5px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .power-fill { height: 100%; background: #7bc87b; width: 50%; }
+        .rssi-good { color: #7bc87b; }
+        .rssi-mid { color: #ffaa55; }
+        .rssi-bad { color: #ff7777; }
+        input {
+            background: #0f0f1a;
+            border: 1px solid #4a6fa5;
+            color: white;
+            padding: 6px;
+            border-radius: 12px;
+            width: 70px;
+            text-align: center;
+        }
+        select {
+            background: #0f0f1a;
+            border: 1px solid #4a6fa5;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+        }
+        .badge {
+            background: #3a3a55;
+            border-radius: 30px;
+            padding: 2px 8px;
+            font-size: 10px;
+        }
+        .flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .title { font-weight: bold; margin-bottom: 8px; color: #aaccff; font-size: 12px; }
+        .mode-active { background: #4a6fa5; box-shadow: 0 0 8px #4a6fa5; }
+        .channel-good { color: #7bc87b; }
+        .channel-mid { color: #ffaa55; }
+        .compact-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            background: #1a1a2e;
+            padding: 6px;
+            border-radius: 12px;
+            margin-top: 6px;
+        }
+        .coord-tip {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-family: monospace;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="canvas-panel">
+        <canvas id="floorCanvas" width="900" height="600"></canvas>
+        <div class="coord-tip" id="coordTip">📐 1 метр = сетка</div>
+        <div class="toolbar">
+            <button id="drawWallBtn" class="warning">🧱 Стена (2 клика)</button>
+            <button id="moveApBtn" class="info">✋ Перемещать AP</button>
+            <button id="moveUserBtn" class="info">🖱️ Перемещать клиента</button>
+            <button id="addApBtn" class="primary">📡 + AP</button>
+            <button id="addUserBtn" class="success">👥 + Клиент</button>
+            <button id="clearWallsBtn">🗑️ Стены</button>
+            <button id="resetSimBtn">🔄 Сброс</button>
+            <span id="drawStatus" class="badge">✏️ Режим: размещение</span>
+        </div>
+        <div class="compact-stats" id="compactStats">
+            📊 Каналы: — | 📡 AP: 0 | 👤 Клиентов: 0
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="card">
+            <div class="title">📐 Размеры (метры)</div>
+            <div class="flex">
+                <label>Ширина: <input type="number" id="zoneWidth" value="40" step="2" min="15" max="80"> м</label>
+                <label>Высота: <input type="number" id="zoneHeight" value="25" step="2" min="10" max="60"> м</label>
+                <button id="applyZoneSizeBtn" class="info">Применить</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="title">📡 Точки доступа (TriTon)</div>
+            <div id="apList" style="max-height: 130px; overflow-y: auto;"></div>
+            <div class="flex">
+                <button id="globalAddAp" class="primary">➕ AP</button>
+                <button id="globalAddUser" class="success">➕ Клиент</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="title">👥 Клиенты (привязка к AP)</div>
+            <div id="userList" style="max-height: 150px; overflow-y: auto;"></div>
+        </div>
+
+        <div class="card">
+            <div class="title">🎛️ Параметры TriTon</div>
+            <div class="flex">
+                <button id="startSimBtn">▶ Старт</button>
+                <button id="stepSimBtn">⏯️ Шаг</button>
+                <button id="stopSimBtn">⏹️ Стоп</button>
+            </div>
+            <div class="flex">
+                <span>⚡ Такт (ms):</span>
+                <input type="number" id="intervalMs" value="3000" step="500">
+                <span>📏 Стена: <input type="number" id="wallLoss" value="12" step="2"> dB</span>
+            </div>
+            <div class="flex" style="margin-top: 6px;">
+                <span>📊 Сканирование (шагов):</span>
+                <input type="number" id="scanInterval" value="5" step="1" min="2" max="20">
+            </div>
+            <div class="flex" style="margin-top: 6px;">
+                <span>🎚️ Порог Retry (%):</span>
+                <input type="number" id="thresholdRetry" value="15" step="1">
+                <span>⚡ Порог Throughput (Mbps):</span>
+                <input type="number" id="thresholdThroughput" value="20" step="1">
+            </div>
+            <div class="flex" style="margin-top: 6px;">
+                <span>📡 Порог RSSI (dBm):</span>
+                <input type="number" id="thresholdRssi" value="-75" step="1">
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="title">📜 Логи TriTon</div>
+            <div class="log-box" id="logPanel">
+                <div class="log-line">🧠 TriTon v1.0 — Тернарная нейросеть</div>
+                <div class="log-line">⚙️ Логируются только изменения</div>
+            </div>
+            <div class="flex">
+                <button id="exportLogsBtn">💾 Экспорт</button>
+                <button id="clearLogsBtn">🗑️ Очистить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function(){
+    // ============================================================
+    // TRITON — ТЕРНАРНАЯ КАСКАДНАЯ НЕЙРОСЕТЬ
+    // ============================================================
+    
+    // ---------- КОНФИГУРАЦИЯ ----------
+    const MIN_POWER = 5;
+    const MAX_POWER = 20;
+    const POWER_STEP = 5;
+    let THRESHOLD_RETRY = 15;
+    let THRESHOLD_THROUGHPUT = 20;
+    let THRESHOLD_RSSI = -75;
+    let SCAN_INTERVAL_STEPS = 5;
+    let currentStepCounter = 0;
+    
+    // ---------- ГЛОБАЛЬНЫЕ ДАННЫЕ ----------
+    let canvas = document.getElementById('floorCanvas');
+    let ctx = canvas.getContext('2d');
+    
+    let roomWidthM = 40;
+    let roomHeightM = 25;
+    let pxPerMeter = 900 / roomWidthM;
+    
+    let walls = [];
+    let accessPoints = [];
+    let users = [];
+    
+    let wallLossDb = 12;
+    let nextApId = 1, nextUserId = 1;
+    
+    let currentMode = 'place';
+    let tempWall = { start: null, end: null };
+    let isDrawingWall = false;
+    let draggingAp = null;
+    let draggingUser = null;
+    let dragOffset = { x: 0, y: 0 };
+    
+    let simInterval = null;
+    let pendingRedraw = false;
+    let lastActionLog = {};
+    
+    // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+    function addLog(msg, type='info') {
+        const logDiv = document.getElementById('logPanel');
+        const line = document.createElement('div');
+        line.className = 'log-line';
+        if(type === 'emergency') line.className = 'log-line-emergency';
+        if(type === 'channel') line.className = 'log-line-channel';
+        line.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logDiv.appendChild(line);
+        line.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        while(logDiv.children.length > 100) logDiv.removeChild(logDiv.firstChild);
+    }
+    
+    function scheduleRedraw() {
+        if (!pendingRedraw) {
+            pendingRedraw = true;
+            requestAnimationFrame(() => {
+                drawCanvas();
+                pendingRedraw = false;
+            });
+        }
+    }
+    
+    // ---------- ОТРИСОВКА СЕТКИ ----------
+    function drawGrid() {
+        ctx.save();
+        ctx.beginPath();
+        ctx.strokeStyle = '#4a6fa530';
+        ctx.lineWidth = 0.5;
+        for (let x = 0; x <= roomWidthM; x++) {
+            ctx.beginPath();
+            ctx.moveTo(x * pxPerMeter, 0);
+            ctx.lineTo(x * pxPerMeter, canvas.height);
+            ctx.stroke();
+        }
+        for (let y = 0; y <= roomHeightM; y++) {
+            ctx.beginPath();
+            ctx.moveTo(0, y * pxPerMeter);
+            ctx.lineTo(canvas.width, y * pxPerMeter);
+            ctx.stroke();
+        }
+        ctx.strokeStyle = '#4a6fa560';
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= roomWidthM; x += 5) {
+            ctx.beginPath();
+            ctx.moveTo(x * pxPerMeter, 0);
+            ctx.lineTo(x * pxPerMeter, canvas.height);
+            ctx.stroke();
+        }
+        for (let y = 0; y <= roomHeightM; y += 5) {
+            ctx.beginPath();
+            ctx.moveTo(0, y * pxPerMeter);
+            ctx.lineTo(canvas.width, y * pxPerMeter);
+            ctx.stroke();
+        }
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#4a6fa5aa';
+        for (let x = 0; x <= roomWidthM; x++) {
+            if (x % 5 === 0 || x === 0) {
+                ctx.fillText(`${x}`, x * pxPerMeter - 4, canvas.height - 4);
+            }
+        }
+        for (let y = 0; y <= roomHeightM; y++) {
+            if (y % 5 === 0 || y === 0) {
+                ctx.fillText(`${y}`, 4, y * pxPerMeter + 3);
+            }
+        }
+        ctx.restore();
+    }
+    
+    // ---------- ГЕОМЕТРИЯ ----------
+    function metersToPixels(xM, yM) { return { x: xM * pxPerMeter, y: yM * pxPerMeter }; }
+    function pixelsToMeters(px, py) { return { x: px / pxPerMeter, y: py / pxPerMeter }; }
+    
+    function segmentsIntersect(p1, p2, p3, p4) {
+        function cross(ax,ay,bx,by) { return ax*by - ay*bx; }
+        const dx1 = p2.x - p1.x, dy1 = p2.y - p1.y;
+        const dx2 = p4.x - p3.x, dy2 = p4.y - p3.y;
+        const r = cross(dx1,dy1, dx2,dy2);
+        if(Math.abs(r) < 1e-6) return false;
+        const t = cross(p3.x-p1.x, p3.y-p1.y, dx2,dy2) / r;
+        const u = cross(p3.x-p1.x, p3.y-p1.y, dx1,dy1) / r;
+        return (t>=0 && t<=1 && u>=0 && u<=1);
+    }
+    
+    function countWallIntersections(ax, ay, bx, by) {
+        let cnt = 0;
+        for(let w of walls) {
+            if(segmentsIntersect({x:ax,y:ay}, {x:bx,y:by}, {x:w.x1,y:w.y1}, {x:w.x2,y:w.y2})) cnt++;
+        }
+        return cnt;
+    }
+    
+    function calculatePathLoss(ax, ay, bx, by) {
+        const distM = Math.hypot(ax-bx, ay-by);
+        if(distM < 0.5) return 0;
+        const freeSpaceLoss = 10 * 3.2 * Math.log10(Math.max(distM, 1.0));
+        const wallPen = countWallIntersections(ax,ay,bx,by) * wallLossDb;
+        return freeSpaceLoss + wallPen;
+    }
+    
+    function computeRssi(ap, user) {
+        const loss = calculatePathLoss(ap.x, ap.y, user.x, user.y);
+        let rssi = -35 - loss;
+        rssi += (ap.power - 10);
+        const interference = (accessPoints.length - 1) * 0.3;
+        rssi -= interference;
+        return Math.min(-20, Math.max(-95, rssi));
+    }
+    
+    function computeRetryFromRssi(rssi) {
+        if (rssi > -55) return 3 + Math.random() * 3;
+        if (rssi > -65) return 7 + Math.random() * 5;
+        if (rssi > -75) return 14 + Math.random() * 8;
+        return 28 + Math.random() * 12;
+    }
+    
+    function computeThroughputFromRssi(rssi) {
+        if (rssi > -55) return 65 + Math.random() * 20;
+        if (rssi > -65) return 40 + Math.random() * 20;
+        if (rssi > -75) return 22 + Math.random() * 15;
+        return 10 + Math.random() * 12;
+    }
+    
+    // ---------- ТЕРНАРНАЯ ОЦЕНКА ----------
+    function evaluateState(retry, throughput, rssi) {
+        let score = 0;
+        if (retry < 5) score--;
+        else if (retry > THRESHOLD_RETRY) score++;
+        if (throughput > 50) score--;
+        else if (throughput < THRESHOLD_THROUGHPUT) score++;
+        if (rssi > -60) score--;
+        else if (rssi < THRESHOLD_RSSI) score++;
+        if (score < 0) return -1;
+        if (score > 0) return 1;
+        return 0;
+    }
+    
+    function getClientStatsForAp(ap) {
+        let connectedUsers = users.filter(u => u.connectedApId === ap.id);
+        if (connectedUsers.length === 0) {
+            return { maxRetry: 0, minThroughput: 999, minRssi: 999, clientCount: 0 };
+        }
+        let maxRetry = 0, minThroughput = 999, minRssi = 999;
+        for (let user of connectedUsers) {
+            const rssi = computeRssi(ap, user);
+            const retry = computeRetryFromRssi(rssi);
+            const throughput = computeThroughputFromRssi(rssi);
+            if (retry > maxRetry) maxRetry = retry;
+            if (throughput < minThroughput) minThroughput = throughput;
+            if (rssi < minRssi) minRssi = rssi;
+        }
+        return { maxRetry, minThroughput, minRssi, clientCount: connectedUsers.length };
+    }
+    
+    function getBestChannel(ap) {
+        let channelLoad = {};
+        for (let ch of [1,2,3,4,5,6,7,8,9,10,11]) channelLoad[ch] = 0;
+        for (let other of accessPoints) {
+            if (other.id === ap.id) continue;
+            const dist = Math.hypot(ap.x - other.x, ap.y - other.y);
+            let signal = -35 - (10 * 3.2 * Math.log10(Math.max(dist, 1)));
+            signal += (other.power - 10);
+            signal = Math.min(-20, Math.max(-95, signal));
+            let weight = 0;
+            if (signal > -60) weight = 3;
+            else if (signal > -70) weight = 2;
+            else if (signal > -80) weight = 1;
+            channelLoad[other.channel] += weight;
+        }
+        let bestChannel = ap.channel;
+        let minLoad = channelLoad[ap.channel];
+        for (let ch of [1,6,11,2,7,3,8,4,9,5,10]) {
+            if (channelLoad[ch] < minLoad) {
+                minLoad = channelLoad[ch];
+                bestChannel = ch;
+            }
+        }
+        return bestChannel;
+    }
+    
+    // ---------- ОСНОВНОЙ АЛГОРИТМ TRITON ----------
+    function tritonTick() {
+        if (accessPoints.length === 0) {
+            scheduleRedraw();
+            updateCompactStats();
+            return;
+        }
+        
+        currentStepCounter++;
+        const shouldScan = (currentStepCounter % SCAN_INTERVAL_STEPS === 0);
+        
+        for (let ap of accessPoints) {
+            const stats = getClientStatsForAp(ap);
+            
+            if (shouldScan) {
+                const bestChannel = getBestChannel(ap);
+                if (bestChannel !== ap.channel) {
+                    const oldCh = ap.channel;
+                    ap.channel = bestChannel;
+                    addLog(`📡 AP${ap.id}: канал ${oldCh} → ${bestChannel}`, 'channel');
+                }
+            }
+            
+            if (stats.clientCount === 0) continue;
+            
+            const state = evaluateState(stats.maxRetry, stats.minThroughput, stats.minRssi);
+            
+            const stateKey = `ap_${ap.id}_state`;
+            if (lastActionLog[stateKey] !== state) {
+                lastActionLog[stateKey] = state;
+                let stateText = state === -1 ? "✅ Хорошо" : (state === 1 ? "⚠️ Плохо" : "🟡 Средне");
+                addLog(`📊 AP${ap.id}: retry=${stats.maxRetry.toFixed(1)}%, thr=${stats.minThroughput.toFixed(0)}Mbps, RSSI=${stats.minRssi.toFixed(0)}dBm → ${stateText}`);
+            }
+            
+            // STATE = 1 (плохо) — повышаем мощность
+            if (state === 1) {
+                if (ap.power < MAX_POWER) {
+                    const oldPower = ap.power;
+                    ap.power = Math.min(MAX_POWER, ap.power + POWER_STEP);
+                    if (oldPower !== ap.power) {
+                        addLog(`⚡ AP${ap.id}: мощность ${oldPower} → ${ap.power} dBm (плохое состояние)`);
+                    }
+                } else {
+                    const bestChannel = getBestChannel(ap);
+                    if (bestChannel !== ap.channel) {
+                        const oldCh = ap.channel;
+                        ap.channel = bestChannel;
+                        ap.power = MIN_POWER;
+                        addLog(`🔄 AP${ap.id}: мощность макс, канал ${oldCh} → ${bestChannel}, мощность сброшена до ${MIN_POWER} dBm`, 'emergency');
+                    } else {
+                        addLog(`🚨 AP${ap.id}: все каналы заняты`, 'emergency');
+                    }
+                }
+            }
+            
+            // STATE = -1 (хорошо) — пробуем снизить мощность
+            if (state === -1 && ap.power > MIN_POWER) {
+                const oldPower = ap.power;
+                const testPower = Math.max(MIN_POWER, ap.power - POWER_STEP);
+                ap.power = testPower;
+                setTimeout(() => {
+                    const testStats = getClientStatsForAp(ap);
+                    const testState = evaluateState(testStats.maxRetry, testStats.minThroughput, testStats.minRssi);
+                    if (testState === -1) {
+                        addLog(`📉 AP${ap.id}: снижение мощности ${oldPower} → ${ap.power} dBm (качество сохранилось)`);
+                    } else {
+                        ap.power = oldPower;
+                        addLog(`⚠️ AP${ap.id}: снижение мощности ухудшило качество, возврат на ${oldPower} dBm`);
+                    }
+                    scheduleRedraw();
+                    updateUI();
+                }, 100);
+            }
+        }
+        
+        scheduleRedraw();
+        updateUI();
+        updateUserList();
+        updateCompactStats();
+    }
+    
+    // ---------- ОТРИСОВКА ----------
+    function drawCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid();
+        
+        // Стены
+        for(let w of walls) {
+            let p1 = metersToPixels(w.x1, w.y1);
+            let p2 = metersToPixels(w.x2, w.y2);
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = '#b87c4f';
+            ctx.lineWidth = 8;
+            ctx.stroke();
+        }
+        
+        if(isDrawingWall && tempWall.start) {
+            let start = metersToPixels(tempWall.start.x, tempWall.start.y);
+            let end = metersToPixels(tempWall.currentX, tempWall.currentY);
+            ctx.beginPath();
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
+            ctx.strokeStyle = '#ffaa88';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+        }
+        
+        // Соединения
+        for(let user of users) {
+            const ap = accessPoints.find(a => a.id === user.connectedApId);
+            if(ap) {
+                let userPx = metersToPixels(user.x, user.y);
+                let apPx = metersToPixels(ap.x, ap.y);
+                ctx.beginPath();
+                ctx.moveTo(userPx.x, userPx.y);
+                ctx.lineTo(apPx.x, apPx.y);
+                ctx.strokeStyle = '#4a6fa580';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        
+        // Клиенты
+        for(let user of users) {
+            let p = metersToPixels(user.x, user.y);
+            ctx.beginPath();
+            ctx.fillStyle = '#7bc87b';
+            ctx.arc(p.x, p.y, 8, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 10px monospace';
+            ctx.fillText(`U${user.id}`, p.x-6, p.y+3);
+            const ap = accessPoints.find(a => a.id === user.connectedApId);
+            if(ap) {
+                const rssi = computeRssi(ap, user);
+                let color = rssi > -65 ? '#7bc87b' : (rssi > -75 ? '#ffaa55' : '#ff7777');
+                ctx.fillStyle = color;
+                ctx.font = '8px monospace';
+                ctx.fillText(`${rssi.toFixed(0)}dBm`, p.x-14, p.y-6);
+            }
+        }
+        
+        // AP
+        for(let ap of accessPoints) {
+            let p = metersToPixels(ap.x, ap.y);
+            let color = ap.channel === 1 || ap.channel === 6 || ap.channel === 11 ? '#7bc87b' : '#ffaa55';
+            ctx.beginPath();
+            ctx.fillStyle = color;
+            ctx.arc(p.x, p.y, 14, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 11px monospace';
+            ctx.fillText(`AP${ap.id}`, p.x-7, p.y+4);
+            ctx.fillStyle = '#fff';
+            ctx.font = '8px monospace';
+            ctx.fillText(`CH${ap.channel}`, p.x-9, p.y-15);
+            const powerPercent = (ap.power - MIN_POWER) / (MAX_POWER - MIN_POWER);
+            ctx.fillStyle = '#333';
+            ctx.fillRect(p.x-12, p.y-22, 24, 3);
+            ctx.fillStyle = powerPercent > 0.7 ? '#ff7777' : '#7bc87b';
+            ctx.fillRect(p.x-12, p.y-22, 24 * powerPercent, 3);
+            ctx.fillStyle = '#ddd';
+            ctx.font = '7px monospace';
+            ctx.fillText(`${ap.power}dBm`, p.x-9, p.y-24);
+        }
+        
+        updateUI();
+        updateUserList();
+    }
+    
+    function updateUI() {
+        const apContainer = document.getElementById('apList');
+        if(!apContainer) return;
+        apContainer.innerHTML = '';
+        for(let ap of accessPoints) {
+            const connectedCount = users.filter(u => u.connectedApId === ap.id).length;
+            const div = document.createElement('div');
+            div.className = 'ap-item';
+            const channelClass = (ap.channel === 1 || ap.channel === 6 || ap.channel === 11) ? 'channel-good' : 'channel-mid';
+            div.innerHTML = `
+                <span>📡 AP#${ap.id} <span class="${channelClass}">CH${ap.channel}</span></span>
+                <span>${ap.power} dBm</span>
+                <span style="font-size:9px;">👥${connectedCount}</span>
+                <div class="power-bar"><div class="power-fill" style="width:${(ap.power-MIN_POWER)/(MAX_POWER-MIN_POWER)*100}%"></div></div>
+                <button class="delApBtn" data-id="${ap.id}">❌</button>
+            `;
+            apContainer.appendChild(div);
+        }
+        document.querySelectorAll('.delApBtn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                let id = parseInt(btn.dataset.id);
+                const otherAp = accessPoints.find(ap => ap.id !== id);
+                if(otherAp) {
+                    users.forEach(u => { if(u.connectedApId === id) u.connectedApId = otherAp.id; });
+                }
+                accessPoints = accessPoints.filter(ap => ap.id !== id);
+                addLog(`📡 AP#${id} удалена`);
+                scheduleRedraw();
+                updateUserList();
+            });
+        });
+    }
+    
+    function updateUserList() {
+        const userContainer = document.getElementById('userList');
+        if(!userContainer) return;
+        userContainer.innerHTML = '';
+        for(let user of users) {
+            const currentAp = accessPoints.find(a => a.id === user.connectedApId);
+            let rssiText = '', rssiClass = '';
+            if(currentAp) {
+                const rssi = computeRssi(currentAp, user);
+                rssiClass = rssi > -65 ? 'rssi-good' : (rssi > -75 ? 'rssi-mid' : 'rssi-bad');
+                rssiText = `<span class="${rssiClass}">${rssi.toFixed(0)}dBm</span>`;
+            } else {
+                rssiText = '<span class="rssi-bad">нет AP</span>';
+            }
+            let options = '';
+            for(let ap of accessPoints) {
+                options += `<option value="${ap.id}" ${user.connectedApId === ap.id ? 'selected' : ''}>AP${ap.id}</option>`;
+            }
+            const div = document.createElement('div');
+            div.className = 'user-item';
+            div.innerHTML = `
+                <span>👤 U${user.id}</span>
+                <span>${rssiText}</span>
+                <select class="user-ap-select" data-id="${user.id}">
+                    ${options}
+                </select>
+                <button class="delUserBtn" data-id="${user.id}">❌</button>
+            `;
+            userContainer.appendChild(div);
+        }
+        document.querySelectorAll('.user-ap-select').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                let userId = parseInt(sel.dataset.id);
+                let newApId = parseInt(sel.value);
+                let user = users.find(u => u.id === userId);
+                if(user && user.connectedApId !== newApId) {
+                    const oldApId = user.connectedApId;
+                    user.connectedApId = newApId;
+                    addLog(`👤 U${userId}: привязка AP${oldApId} → AP${newApId}`);
+                    scheduleRedraw();
+                }
+            });
+        });
+        document.querySelectorAll('.delUserBtn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                let id = parseInt(btn.dataset.id);
+                users = users.filter(u => u.id !== id);
+                addLog(`👤 Клиент U${id} удалён`);
+                scheduleRedraw();
+                updateUserList();
+            });
+        });
+    }
+    
+    function updateCompactStats() {
+        const stats = {};
+        for(let ch of [1,2,3,4,5,6,7,8,9,10,11]) stats[ch] = 0;
+        for(let ap of accessPoints) stats[ap.channel]++;
+        let statsHtml = `📊 Каналы: `;
+        for(let ch of [1,6,11,2,7,3,8,4,9,5,10]) {
+            const count = stats[ch];
+            let color = count === 0 ? '#7bc87b' : (count === 1 ? '#ffaa55' : '#ff7777');
+            statsHtml += `<span style="color:${color}">${ch}:${count}</span> `;
+        }
+        statsHtml += ` | 📡 AP: ${accessPoints.length} | 👤 Клиентов: ${users.length}`;
+        const statsDiv = document.getElementById('compactStats');
+        if(statsDiv) statsDiv.innerHTML = statsHtml;
+    }
+    
+    // ---------- ОБРАБОТЧИКИ МЫШИ ----------
+    function getMouseCoordMeters(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        let px = (e.clientX - rect.left) * scaleX;
+        let py = (e.clientY - rect.top) * scaleY;
+        px = Math.min(canvas.width, Math.max(0, px));
+        py = Math.min(canvas.height, Math.max(0, py));
+        return { x: px / pxPerMeter, y: py / pxPerMeter };
+    }
+    
+    function onMouseDown(e) {
+        const { x, y } = getMouseCoordMeters(e);
+        
+        if(currentMode === 'moveAp') {
+            for(let ap of accessPoints) {
+                if(Math.hypot(ap.x - x, ap.y - y) < 1.2) {
+                    draggingAp = ap;
+                    dragOffset = { x: ap.x - x, y: ap.y - y };
+                    canvas.style.cursor = 'grabbing';
+                    e.preventDefault();
+                    return;
+                }
+            }
+            return;
+        }
+        
+        if(currentMode === 'moveUser') {
+            for(let user of users) {
+                if(Math.hypot(user.x - x, user.y - y) < 0.9) {
+                    draggingUser = user;
+                    dragOffset = { x: user.x - x, y: user.y - y };
+                    canvas.style.cursor = 'grabbing';
+                    e.preventDefault();
+                    return;
+                }
+            }
+            return;
+        }
+        
+        if(currentMode === 'wall') {
+            if(!isDrawingWall) {
+                tempWall.start = { x, y };
+                tempWall.currentX = x;
+                tempWall.currentY = y;
+                isDrawingWall = true;
+            } else {
+                walls.push({ x1: tempWall.start.x, y1: tempWall.start.y, x2: x, y2: y });
+                addLog(`🧱 Стена добавлена (${wallLossDb} dB)`);
+                isDrawingWall = false;
+                tempWall.start = null;
+                scheduleRedraw();
+            }
+            return;
+        }
+        
+        // Удаление AP
+        for(let i=0; i<accessPoints.length; i++) {
+            if(Math.hypot(accessPoints[i].x - x, accessPoints[i].y - y) < 1.0) {
+                let removed = accessPoints.splice(i,1);
+                if(accessPoints.length > 0) {
+                    users.forEach(u => { if(u.connectedApId === removed[0].id) u.connectedApId = accessPoints[0].id; });
+                }
+                addLog(`📡 AP#${removed[0].id} удалена`);
+                scheduleRedraw();
+                updateUserList();
+                return;
+            }
+        }
+        
+        // Удаление пользователя
+        for(let i=0; i<users.length; i++) {
+            if(Math.hypot(users[i].x - x, users[i].y - y) < 0.8) {
+                let removed = users.splice(i,1);
+                addLog(`👤 Клиент U${removed[0].id} удалён`);
+                scheduleRedraw();
+                updateUserList();
+                return;
+            }
+        }
+    }
+    
+    function onMouseMove(e) {
+        if(draggingAp) {
+            const { x, y } = getMouseCoordMeters(e);
+            draggingAp.x = Math.min(roomWidthM - 1, Math.max(1, x + dragOffset.x));
+            draggingAp.y = Math.min(roomHeightM - 1, Math.max(1, y + dragOffset.y));
+            scheduleRedraw();
+            return;
+        }
+        if(draggingUser) {
+            const { x, y } = getMouseCoordMeters(e);
+            draggingUser.x = Math.min(roomWidthM - 0.5, Math.max(0.5, x + dragOffset.x));
+            draggingUser.y = Math.min(roomHeightM - 0.5, Math.max(0.5, y + dragOffset.y));
+            scheduleRedraw();
+            return;
+        }
+        if(isDrawingWall && currentMode === 'wall' && tempWall.start) {
+            const { x, y } = getMouseCoordMeters(e);
+            tempWall.currentX = x;
+            tempWall.currentY = y;
+            scheduleRedraw();
+        }
+    }
+    
+    function onMouseUp() {
+        if(draggingAp) { draggingAp = null; canvas.style.cursor = 'crosshair'; scheduleRedraw(); }
+        if(draggingUser) { draggingUser = null; canvas.style.cursor = 'crosshair'; scheduleRedraw(); }
+    }
+    
+    // ---------- УПРАВЛЕНИЕ ----------
+    function loadConfigFromUI() {
+        THRESHOLD_RETRY = parseInt(document.getElementById('thresholdRetry').value);
+        THRESHOLD_THROUGHPUT = parseInt(document.getElementById('thresholdThroughput').value);
+        THRESHOLD_RSSI = parseInt(document.getElementById('thresholdRssi').value);
+        SCAN_INTERVAL_STEPS = parseInt(document.getElementById('scanInterval').value);
+        addLog(`⚙️ Пороги: retry>${THRESHOLD_RETRY}%, thr<${THRESHOLD_THROUGHPUT}Mbps, rssi<${THRESHOLD_RSSI}dBm`);
+    }
+    
+    function applyZoneSize() {
+        let newW = parseFloat(document.getElementById('zoneWidth').value);
+        let newH = parseFloat(document.getElementById('zoneHeight').value);
+        if(isNaN(newW) || isNaN(newH)) return;
+        roomWidthM = Math.min(80, Math.max(15, newW));
+        roomHeightM = Math.min(60, Math.max(10, newH));
+        pxPerMeter = 900 / roomWidthM;
+        canvas.width = roomWidthM * pxPerMeter;
+        canvas.height = roomHeightM * pxPerMeter;
+        accessPoints = accessPoints.filter(ap => ap.x>=0 && ap.x<=roomWidthM && ap.y>=0 && ap.y<=roomHeightM);
+        users = users.filter(u => u.x>=0 && u.x<=roomWidthM && u.y>=0 && u.y<=roomHeightM);
+        scheduleRedraw();
+        addLog(`📐 Размер помещения: ${roomWidthM}×${roomHeightM} м`);
+    }
+    
+    function addAp() {
+        let x = 4 + Math.random() * (roomWidthM - 8);
+        let y = 4 + Math.random() * (roomHeightM - 8);
+        let initialChannel = [1,6,11][Math.floor(Math.random()*3)];
+        accessPoints.push({
+            id: nextApId++,
+            x, y,
+            channel: initialChannel,
+            power: MIN_POWER
+        });
+        addLog(`📡 AP#${nextApId-1} на (${x.toFixed(1)};${y.toFixed(1)}) канал ${initialChannel}, мощность ${MIN_POWER}dBm`);
+        scheduleRedraw();
+        updateUserList();
+        updateCompactStats();
+    }
+    
+    function addUser() {
+        let x = 2 + Math.random() * (roomWidthM - 4);
+        let y = 2 + Math.random() * (roomHeightM - 4);
+        let connectedApId = accessPoints.length > 0 ? accessPoints[0].id : null;
+        users.push({ id: nextUserId++, x, y, connectedApId });
+        addLog(`👤 U${nextUserId-1} на (${x.toFixed(1)};${y.toFixed(1)}) → AP${connectedApId}`);
+        scheduleRedraw();
+        updateUserList();
+        updateCompactStats();
+    }
+    
+    function startSim() {
+        if(simInterval) clearInterval(simInterval);
+        let ms = parseInt(document.getElementById('intervalMs').value);
+        simInterval = setInterval(() => tritonTick(), ms);
+        addLog(`▶️ Запуск TriTon (такт ${ms}ms)`);
+    }
+    
+    function stopSim() { if(simInterval) { clearInterval(simInterval); simInterval = null; } addLog(`⏹️ Стоп`); }
+    function stepSim() { tritonTick(); addLog(`⏯️ Ручной шаг`); }
+    
+    function exportLogs() {
+        const logDiv = document.getElementById('logPanel');
+        let lines = [];
+        for(let child of logDiv.children) lines.push(child.innerText);
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `triton_logs_${Date.now()}.txt`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        addLog(`📁 Логи экспортированы`);
+    }
+    
+    function clearLogs() { document.getElementById('logPanel').innerHTML = '<div class="log-line">🧹 Логи очищены</div>'; }
+    function resetSim() { walls = []; accessPoints = []; users = []; nextApId = 1; nextUserId = 1; currentStepCounter = 0; lastActionLog = {}; addLog(`🔄 Полный сброс`); scheduleRedraw(); updateUserList(); updateCompactStats(); }
+    function clearWalls() { walls = []; scheduleRedraw(); addLog(`🧱 Все стены удалены`); }
+    
+    function setMode(mode) {
+        currentMode = mode;
+        isDrawingWall = false;
+        tempWall.start = null;
+        draggingAp = null;
+        draggingUser = null;
+        const statusSpan = document.getElementById('drawStatus');
+        if(mode === 'wall') statusSpan.innerHTML = '🧱 Режим: стена (2 клика)';
+        else if(mode === 'moveAp') statusSpan.innerHTML = '✋ Режим: перемещение AP';
+        else if(mode === 'moveUser') statusSpan.innerHTML = '🖱️ Режим: перемещение клиента';
+        else statusSpan.innerHTML = '✏️ Режим: размещение/удаление';
+        document.getElementById('drawWallBtn').classList.remove('mode-active');
+        document.getElementById('moveApBtn').classList.remove('mode-active');
+        document.getElementById('moveUserBtn').classList.remove('mode-active');
+        if(mode === 'wall') document.getElementById('drawWallBtn').classList.add('mode-active');
+        if(mode === 'moveAp') document.getElementById('moveApBtn').classList.add('mode-active');
+        if(mode === 'moveUser') document.getElementById('moveUserBtn').classList.add('mode-active');
+        scheduleRedraw();
+    }
+    
+    // ---------- ИНИЦИАЛИЗАЦИЯ ----------
+    function init() {
+        pxPerMeter = 900 / roomWidthM;
+        canvas.width = roomWidthM * pxPerMeter;
+        canvas.height = roomHeightM * pxPerMeter;
+        
+        document.getElementById('zoneWidth').value = roomWidthM;
+        document.getElementById('zoneHeight').value = roomHeightM;
+        document.getElementById('thresholdRetry').value = THRESHOLD_RETRY;
+        document.getElementById('thresholdThroughput').value = THRESHOLD_THROUGHPUT;
+        document.getElementById('thresholdRssi').value = THRESHOLD_RSSI;
+        document.getElementById('scanInterval').value = SCAN_INTERVAL_STEPS;
+        
+        canvas.addEventListener('mousedown', onMouseDown);
+        canvas.addEventListener('mousemove', onMouseMove);
+        canvas.addEventListener('mouseup', onMouseUp);
+        
+        document.getElementById('drawWallBtn').onclick = () => setMode('wall');
+        document.getElementById('moveApBtn').onclick = () => setMode('moveAp');
+        document.getElementById('moveUserBtn').onclick = () => setMode('moveUser');
+        document.getElementById('addApBtn').onclick = addAp;
+        document.getElementById('addUserBtn').onclick = addUser;
+        document.getElementById('clearWallsBtn').onclick = clearWalls;
+        document.getElementById('resetSimBtn').onclick = resetSim;
+        document.getElementById('globalAddAp').onclick = addAp;
+        document.getElementById('globalAddUser').onclick = addUser;
+        document.getElementById('startSimBtn').onclick = startSim;
+        document.getElementById('stopSimBtn').onclick = stopSim;
+        document.getElementById('stepSimBtn').onclick = stepSim;
+        document.getElementById('exportLogsBtn').onclick = exportLogs;
+        document.getElementById('clearLogsBtn').onclick = clearLogs;
+        document.getElementById('applyZoneSizeBtn').onclick = applyZoneSize;
+        document.getElementById('wallLoss').addEventListener('change', (e) => {
+            wallLossDb = parseFloat(e.target.value) || 12;
+            addLog(`📏 Затухание стены = ${wallLossDb} dB`);
+            scheduleRedraw();
+        });
+        
+        document.getElementById('thresholdRetry').addEventListener('change', loadConfigFromUI);
+        document.getElementById('thresholdThroughput').addEventListener('change', loadConfigFromUI);
+        document.getElementById('thresholdRssi').addEventListener('change', loadConfigFromUI);
+        document.getElementById('scanInterval').addEventListener('change', loadConfigFromUI);
+        
+        // Стартовые объекты
+        addAp(); addAp(); addAp();
+        addUser(); addUser(); addUser();
+        
+        scheduleRedraw();
+        updateCompactStats();
+        addLog(`🚀 TriTon симулятор готов | ${roomWidthM}×${roomHeightM} м`);
+        loadConfigFromUI();
+    }
+    
+    init();
+})();
+</script>
+</body>
+</html>
