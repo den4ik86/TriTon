@@ -156,7 +156,7 @@ TriTon is more than just a script. It is:
 - **Contribution to the community** — OpenWrt gets a tool it didn't have before
 - A neural network that runs on a $15 router, without cloud, without internet, without FPU. In Shell scripts. That is TriTon.
 
-RU
+RU  
 TriTon — Тернарная каскадная нейросеть для управления WiFi-роутером  
 
 Что это такое  
