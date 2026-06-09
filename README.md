@@ -1,7 +1,6 @@
 # TriTon
 A ternary neural network for managing Wi-Fi on OpenWRT routers
 
-Here's the English translation of your document:
 
 **TriTon — Ternary Cascading Neural Network for WiFi Router Control**
 
